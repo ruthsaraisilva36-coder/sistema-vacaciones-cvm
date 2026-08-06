@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Permitir lectura a todos (Caracas puede ver)
+    // Permitir escritura a todos (PIM III puede guardar)
+    // NOTA: Para mayor seguridad, agregar autenticación después
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}

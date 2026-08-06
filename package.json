@@ -1,0 +1,10 @@
+{
+  "name": "sistema-vacaciones-cvm",
+  "version": "1.0.0",
+  "description": "Sistema de Gestión de Vacaciones y Reposos - CVM PIM III Chocó-Isidora",
+  "scripts": {
+    "deploy": "firebase deploy --only hosting",
+    "serve": "firebase serve --only hosting --port 5000"
+  },
+  "private": true
+}
