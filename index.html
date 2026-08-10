@@ -1107,11 +1107,35 @@ function saveData() {
 // ══════════════ FIREBASE SYNC ══════════════
 async function saveToFirebase() {
   try {
-    // Guardar solicitudes
+    // Obtener IDs actuales en Firebase para detectar eliminados
+    const solSnap = await db.collection('solicitudes').get();
+    const solIdsEnFirebase = solSnap.docs.map(d => d.id);
+    const solIdsActuales = solicitudes.map(s => String(s.id));
+
+    // Eliminar de Firebase los que ya no existen localmente
+    for (const fbId of solIdsEnFirebase) {
+      if (!solIdsActuales.includes(fbId)) {
+        await db.collection('solicitudes').doc(fbId).delete();
+      }
+    }
+
+    // Guardar solicitudes actuales
     for (const sol of solicitudes) {
       await db.collection('solicitudes').doc(String(sol.id)).set(sol);
     }
-    // Guardar reposos
+
+    // Lo mismo para reposos
+    const repSnap = await db.collection('reposos').get();
+    const repIdsEnFirebase = repSnap.docs.map(d => d.id);
+    const repIdsActuales = reposos.map(r => String(r.id));
+
+    for (const fbId of repIdsEnFirebase) {
+      if (!repIdsActuales.includes(fbId)) {
+        await db.collection('reposos').doc(fbId).delete();
+      }
+    }
+
+    // Guardar reposos actuales
     for (const rep of reposos) {
       await db.collection('reposos').doc(String(rep.id)).set(rep);
     }
