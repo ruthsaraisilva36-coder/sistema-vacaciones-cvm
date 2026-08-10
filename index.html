@@ -1467,21 +1467,28 @@ function renderVacaciones() {
     const upVal = parseInt(r.up) || 0;
     const periodoDisplay = (r.pp && r.pp.trim()) ? r.pp : (upVal > 0 ? (upVal+1) + '-' + (upVal+2) : '');
     // Último período disfrutado: el anterior al primer período pendiente del trabajador
+    // Validado contra fecha de ingreso para no mostrar períodos imposibles
     const regsDelTrab = vacacionesData.filter(x => x.c === r.c && x.up && parseInt(x.up) > 0);
     let ultDisfrutado = '';
     if (regsDelTrab.length > 0) {
+      // Obtener año de ingreso del trabajador
+      const fIngreso = parseFechaFlexible(r.i);
+      const anioIngreso = fIngreso ? fIngreso.getFullYear() : null;
       // Registros con período pendiente (pp) = secuencia actual de vacaciones vencidas
       const regsConPP = regsDelTrab.filter(x => x.pp && x.pp.trim());
       let upRef;
       if (regsConPP.length > 0) {
-        // El pp más antiguo marca desde dónde están pendientes → el anterior es el último disfrutado
         const minUpConPP = Math.min(...regsConPP.map(x => parseInt(x.up)));
         upRef = minUpConPP;
       } else {
-        // Sin pp, el up más alto + 1 sería el siguiente → up más alto es el último registrado
         upRef = Math.max(...regsDelTrab.map(x => parseInt(x.up))) + 1;
       }
-      ultDisfrutado = (upRef - 1) + '-' + upRef;
+      // Validar: el período disfrutado (upRef-1 a upRef) no puede ser anterior al año de ingreso
+      if (anioIngreso && (upRef - 1) < anioIngreso) {
+        ultDisfrutado = ''; // No ha disfrutado aún — ingresó después de ese período
+      } else {
+        ultDisfrutado = (upRef - 1) + '-' + upRef;
+      }
     }
     // Índice real en vacacionesData para editar
     const realIdx = vacacionesData.indexOf(r);
