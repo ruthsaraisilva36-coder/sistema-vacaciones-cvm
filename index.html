@@ -104,32 +104,52 @@ tr:hover { background: #eef3fa; }
 
 /* ── PRINT FORMAT ── */
 .print-format { display: none; }
+@page { size: 8.5in 13in; margin: 4mm 15mm; }
 @media print {
   body, html { margin: 0 !important; padding: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; }
   body * { visibility: hidden; display: none; }
   .modal-overlay, .modal-overlay * { display: none !important; visibility: hidden !important; }
   .print-format { display: block !important; visibility: visible !important; position: absolute; top: 0; left: 0; width: 100%; margin: 0; padding: 0; }
   .print-format * { visibility: visible !important; display: revert; }
-  .print-format .solicitud { max-width: 100% !important; width: 100% !important; padding: 0 !important; margin: 0 !important; font-size: 7px !important; line-height: 1.05 !important; }
+  .print-format .solicitud { max-width: 100% !important; width: 100% !important; padding: 4px 0 !important; margin: 0 auto !important; font-size: 15px !important; line-height: 1.35 !important; box-sizing: border-box !important; }
+  /* Asegurar bordes visibles en impresión */
+  .print-format .solicitud table.ft { border-collapse: collapse !important; }
+  .print-format .solicitud table.ft td { border: 1px solid #000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  .print-format .solicitud table.ft td.nb { border: none !important; }
+  .print-format .solicitud table.ft td.bb0 { border-bottom: none !important; }
+  .print-format .solicitud table.ft td.bt0 { border-top: none !important; }
+  .print-format .solicitud .cx { border: 2px solid #000 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .print-format .solicitud table.ft { width: 100% !important; }
-  .print-format .solicitud table.ft td { font-size: 7px !important; padding: 1px 2px !important; }
-  .print-format .solicitud table.ft td.hdr { font-size: 8.5px !important; padding: 2px 4px !important; }
-  .print-format .solicitud table.ft td.lbl { font-size: 6.5px !important; }
-  .print-format .solicitud table.ft td.val { font-size: 7.5px !important; }
-  .print-format .solicitud .cx { width: 10px !important; height: 10px !important; line-height: 10px !important; font-size: 7px !important; border-width: 1px !important; }
-  .print-format .solicitud .firma-line { margin-top: 18px !important; font-size: 6px !important; padding-top: 2px !important; }
-  .print-format .solicitud .firma-name { font-size: 7px !important; min-height: 10px !important; }
-  .print-format .solicitud .an-line { margin-top: 10px !important; font-size: 6px !important; }
-  .print-format .solicitud table.ft td[style*="height:55px"] { height: 42px !important; }
-  .print-format .solicitud table.ft td[style*="height:55px"] div[style*="height:55px"] { height: 42px !important; }
-  .print-format .solicitud table.ft td[style*="height:55px"] img { height: 28px !important; }
-  .print-format .solicitud table.ft td[style*="height:55px"] span { font-size: 14px !important; letter-spacing: 1px !important; }
-  .print-format .solicitud table.ft td[style*="height:35px"] { height: 45px !important; }
-  .print-format .solicitud table.ft td[style*="height:30px"] { height: 30px !important; }
-  .print-format .solicitud table.ft td[style*="height:22px"] { height: 16px !important; }
-  .print-format .solicitud table.ft td[style*="height:20px"] { height: 14px !important; }
-  .print-format .solicitud table.ft td[style*="height:18px"] { height: 13px !important; }
-  @page { size: letter portrait; margin: 8mm; }
+  .print-format .solicitud table.ft td { font-size: 15px !important; padding: 5px 6px !important; }
+  .print-format .solicitud table.ft td.hdr { font-size: 16px !important; padding: 8px 10px !important; }
+  .print-format .solicitud table.ft td.lbl { font-size: 13px !important; }
+  .print-format .solicitud table.ft td.val { font-size: 15px !important; }
+  .print-format .solicitud .cx { width: 18px !important; height: 18px !important; line-height: 18px !important; font-size: 14px !important; border-width: 2px !important; }
+  .print-format .solicitud .firma-line { margin-top: 55px !important; font-size: 11px !important; padding-top: 4px !important; }
+  .print-format .solicitud .firma-name { font-size: 13px !important; min-height: 16px !important; }
+  .print-format .solicitud .an-line { margin-top: 20px !important; font-size: 11px !important; }
+  /* Banner institucional */
+  .print-format .solicitud table.ft td[style*="height:55px"] { height: 85px !important; }
+  .print-format .solicitud table.ft td[style*="height:55px"] div[style*="height:55px"] { height: 85px !important; }
+  .print-format .solicitud table.ft td[style*="height:55px"] img { height: 55px !important; }
+  .print-format .solicitud table.ft td[style*="height:55px"] span { font-size: 26px !important; letter-spacing: 3px !important; }
+  /* Firmas - más altas (tr) */
+  .print-format .solicitud table.ft tr[style*="height:35px"] { height: 85px !important; }
+  .print-format .solicitud table.ft tr[style*="height:35px"] td { height: 85px !important; }
+  /* Especifique (tr) */
+  .print-format .solicitud table.ft tr[style*="height:30px"] { height: 70px !important; }
+  .print-format .solicitud table.ft tr[style*="height:30px"] td { height: 70px !important; }
+  /* Filas de datos (tr) */
+  .print-format .solicitud table.ft tr[style*="height:22px"] { height: 36px !important; }
+  .print-format .solicitud table.ft tr[style*="height:20px"] { height: 34px !important; }
+  .print-format .solicitud table.ft tr[style*="height:18px"] { height: 30px !important; }
+  .print-format .solicitud table.ft tr[style*="height:16px"] { height: 28px !important; }
+  .print-format .solicitud table.ft tr[style*="height:14px"] { height: 26px !important; }
+  /* Espacios entre secciones */
+  .print-format .solicitud table.ft tr td[style*="height:6px"] { height: 14px !important; }
+  .print-format .solicitud table.ft tr td[style*="height:3px"] { height: 10px !important; }
+  .print-format .solicitud table.ft tr[style*="height:4px"] { height: 8px !important; }
+  .print-format .solicitud table.ft tr[style*="height:4px"] td { height: 8px !important; }
 }
 
 /* ── SOLICITUD PREVIEW (Réplica exacta VACACIONES_8FORMATO.xls — 32 cols) ── */
@@ -697,6 +717,8 @@ body.viewer-mode .admin-only { display: none !important; }
         </select>
         <button class="btn btn-outline btn-sm" onclick="generarReporteReposos()">Generar Reporte</button>
         <button class="btn btn-outline btn-sm" onclick="exportReposos()">Descargar Excel</button>
+        <button class="btn btn-primary btn-sm" onclick="document.getElementById('import-reposos-file').click()" style="background:#548235;">Importar Reposos Excel</button>
+        <input type="file" id="import-reposos-file" accept=".xlsx,.xls" style="display:none" onchange="importReposos(this)">
       </div>
     </div>
     <div class="search-bar" style="padding:0 20px;">
@@ -2051,9 +2073,9 @@ function previsualizarSolicitud() {
       <td class="lbl ctr bb0">14.</td>
       <td colspan="8" class="lbl bb0">FIRMA DEL TRABAJADOR:</td>
       <td class="lbl ctr bb0">15.</td>
-      <td colspan="10" class="lbl bb0" style="font-size:7.5px;">NOMBRE Y APELLIDO DEL (LA) SUPERVISOR (A) INMEDIATO (A)</td>
+      <td colspan="10" class="lbl bb0" style="font-size:8.5px;">NOMBRE Y APELLIDO DEL (LA) SUPERVISOR (A) INMEDIATO (A)</td>
       <td class="lbl ctr bb0">16.</td>
-      <td colspan="11" class="lbl bb0" style="font-size:8px;">NOMBRE Y APELLIDO DEL (LA) GERENTE</td>
+      <td colspan="11" class="lbl bb0" style="font-size:8.5px;">NOMBRE Y APELLIDO DEL (LA) GERENTE</td>
     </tr>
     <tr style="height:35px;">
       <td colspan="9" rowspan="2" class="vb ctr" style="border-top:none;"></td>
@@ -2071,11 +2093,11 @@ function previsualizarSolicitud() {
     <!-- R31-R34: 17. COORD GH/GO | 18. COORD BS | 19. GERENTE OFICINA GH -->
     <tr>
       <td class="lbl ctr bb0">17.</td>
-      <td colspan="8" class="lbl bb0" style="font-size:7px;">NOMBRE Y APELLIDO DEL COORDINADOR DE GESTIÓN HUMANA / GERENCIA OPERACIONAL</td>
+      <td colspan="8" class="lbl bb0" style="font-size:8px;">NOMBRE Y APELLIDO DEL COORDINADOR DE GESTIÓN HUMANA / GERENCIA OPERACIONAL</td>
       <td class="lbl ctr bb0">18.</td>
-      <td colspan="10" class="lbl bb0" style="font-size:7.5px;">NOMBRE Y APELLIDO DEL (LA) COORDINADOR (A) DE BIENESTAR SOCIAL</td>
+      <td colspan="10" class="lbl bb0" style="font-size:8.5px;">NOMBRE Y APELLIDO DEL (LA) COORDINADOR (A) DE BIENESTAR SOCIAL</td>
       <td class="lbl ctr bb0">19.</td>
-      <td colspan="11" class="lbl bb0" style="font-size:7.5px;">NOMBRE Y APELLIDO DEL (LA) GERENTE DE LA OFICINA DE GESTIÓN HUMANA</td>
+      <td colspan="11" class="lbl bb0" style="font-size:8.5px;">NOMBRE Y APELLIDO DEL (LA) GERENTE DE LA OFICINA DE GESTIÓN HUMANA</td>
     </tr>
     <tr style="height:35px;">
       <td colspan="9" class="vb ctr" style="border-top:none;">
@@ -2415,7 +2437,10 @@ function renderHistorial() {
       <td>${r.dias || ''}</td>
       <td><span class="badge ${estadoBadge}">${r.estado}</span></td>
       <td>
-        ${isAdmin ? (r._tipo === 'VACACIONES' ? `<button class="btn btn-sm btn-outline" onclick="cambiarEstado(${r.id},'sol')">Estado</button>` : `<button class="btn btn-sm btn-outline" onclick="cambiarEstadoReposo(${r.id})">Estado</button>`) : ''}
+        ${isAdmin ? (r._tipo === 'VACACIONES'
+          ? `<button class="btn btn-sm btn-outline" onclick="cambiarEstado(${r.id},'sol')">Estado</button> <button class="btn btn-sm" style="background:#c0392b;color:#fff;" onclick="eliminarHistorial(${r.id},'VACACIONES')">Eliminar</button>`
+          : `<button class="btn btn-sm btn-outline" onclick="cambiarEstadoReposo(${r.id})">Estado</button> <button class="btn btn-sm" style="background:#c0392b;color:#fff;" onclick="eliminarHistorial(${r.id},'REPOSO')">Eliminar</button>`
+        ) : ''}
       </td>
     </tr>`;
   }).join('') || '<tr><td colspan="11" style="text-align:center;color:#999;">Sin registros en el historial</td></tr>';
@@ -2442,6 +2467,132 @@ function cambiarEstadoReposo(id) {
   saveData();
   renderHistorial();
   renderReposos();
+}
+
+// ══════════════ IMPORTAR REPOSOS MASIVO ══════════════
+function importReposos(input) {
+  const file = input.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    try {
+      const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+      if (rows.length < 2) { alert('El archivo está vacío o no tiene datos.'); return; }
+
+      // Detectar columnas por encabezado
+      const hdr = rows[0].map(h => String(h).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''));
+      const colMap = { cedula: -1, nombre: -1, unidad: -1, ubicacion: -1, tpr: -1, diagnostico: -1, emitido: -1, desde: -1, hasta: -1, dias: -1, convalidado: -1, obs: -1, estado: -1, fecha: -1 };
+
+      hdr.forEach((h, idx) => {
+        if (h.includes('cedula') || h === 'c.i.' || h === 'ci') colMap.cedula = idx;
+        else if (h.includes('nombre') || h.includes('apellido') || h.includes('trabajador')) colMap.nombre = idx;
+        else if (h.includes('unidad') || h.includes('gerencia') || h.includes('adscripcion')) colMap.unidad = idx;
+        else if (h.includes('ubicacion') || h.includes('sede')) colMap.ubicacion = idx;
+        else if (h.includes('tipo') && (h.includes('reposo') || h.includes('tpr'))) colMap.tpr = idx;
+        else if (h === 'tipo' || h === 'tpr') colMap.tpr = idx;
+        else if (h.includes('diagnostico') || h.includes('motivo') || h.includes('patologia')) colMap.diagnostico = idx;
+        else if (h.includes('emitido') || h.includes('medico') || h.includes('doctor')) colMap.emitido = idx;
+        else if (h.includes('desde') || h.includes('inicio') || h.includes('fecha inicio')) colMap.desde = idx;
+        else if (h.includes('hasta') || h.includes('fin') || h.includes('fecha fin')) colMap.hasta = idx;
+        else if (h.includes('dias') || h.includes('duracion')) colMap.dias = idx;
+        else if (h.includes('convalidado') || h.includes('conval')) colMap.convalidado = idx;
+        else if (h.includes('observ') || h.includes('obs')) colMap.obs = idx;
+        else if (h.includes('estado')) colMap.estado = idx;
+        else if (h.includes('fecha') && !h.includes('inicio') && !h.includes('fin') && !h.includes('ingreso')) colMap.fecha = idx;
+      });
+
+      if (colMap.cedula < 0) {
+        alert('No se encontró la columna CÉDULA en el encabezado del Excel.\n\nAsegúrese de que la primera fila tenga encabezados como:\nCédula, Nombre, Tipo Reposo, Diagnóstico, Desde, Hasta, Días, etc.');
+        return;
+      }
+
+      function parseDate(val) {
+        if (!val) return '';
+        if (val instanceof Date) return val.toISOString().split('T')[0];
+        if (typeof val === 'number') {
+          const d = new Date((val - 25569) * 86400000);
+          return d.toISOString().split('T')[0];
+        }
+        const s = String(val).trim();
+        // dd/mm/yyyy o dd-mm-yyyy
+        const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/);
+        if (m) return m[3] + '-' + m[2].padStart(2,'0') + '-' + m[1].padStart(2,'0');
+        // yyyy-mm-dd
+        if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+        return s;
+      }
+
+      function parseTpr(val) {
+        const v = String(val).toUpperCase().trim();
+        if (v.includes('ENFERMEDAD') || v === 'E' || v.includes('ENF')) return 'E';
+        if (v.includes('PRENAT') || v.includes('PRE-NAT') || v === 'PRE') return 'PRE';
+        if (v.includes('POSTNAT') || v.includes('POST-NAT') || v === 'POST') return 'POST';
+        if (v.includes('ACCIDENTE') || v === 'A' || v.includes('ACC')) return 'A';
+        return v || 'E';
+      }
+
+      let count = 0;
+      const dataRows = rows.slice(1).filter(r => r[colMap.cedula]);
+
+      for (const r of dataRows) {
+        const rep = {
+          id: nextRepId++,
+          tipo: 'REPOSO',
+          fecha: colMap.fecha >= 0 ? parseDate(r[colMap.fecha]) : new Date().toISOString().split('T')[0],
+          cedula: String(r[colMap.cedula] || '').replace(/\D/g, ''),
+          nombre: String(r[colMap.nombre >= 0 ? colMap.nombre : ''] || '').toUpperCase(),
+          unidad: colMap.unidad >= 0 ? String(r[colMap.unidad] || '') : '',
+          ubicacion: colMap.ubicacion >= 0 ? String(r[colMap.ubicacion] || '') : 'PIM III - Planta Choco',
+          tpr: colMap.tpr >= 0 ? parseTpr(r[colMap.tpr]) : 'E',
+          diagnostico: colMap.diagnostico >= 0 ? String(r[colMap.diagnostico] || '') : '',
+          emitidoPor: colMap.emitido >= 0 ? String(r[colMap.emitido] || '') : '',
+          desde: colMap.desde >= 0 ? parseDate(r[colMap.desde]) : '',
+          hasta: colMap.hasta >= 0 ? parseDate(r[colMap.hasta]) : '',
+          dias: colMap.dias >= 0 ? String(r[colMap.dias] || '') : '',
+          convalidado: colMap.convalidado >= 0 ? String(r[colMap.convalidado] || 'NO') : 'NO',
+          obs: colMap.obs >= 0 ? String(r[colMap.obs] || '') : '',
+          estado: colMap.estado >= 0 ? String(r[colMap.estado] || 'ACTIVO').toUpperCase() : 'FINALIZADO'
+        };
+        if (!rep.cedula || !rep.nombre) continue;
+        // Calcular días si no viene en el Excel
+        if (!rep.dias && rep.desde && rep.hasta) {
+          const d1 = new Date(rep.desde), d2 = new Date(rep.hasta);
+          if (!isNaN(d1) && !isNaN(d2)) rep.dias = String(Math.round((d2 - d1) / 86400000) + 1);
+        }
+        reposos.push(rep);
+        count++;
+      }
+
+      saveData();
+      renderReposos();
+      renderHistorial();
+      renderDashboard();
+      alert(count + ' reposos importados correctamente.');
+    } catch(err) {
+      alert('Error al leer el archivo: ' + err.message);
+      console.error(err);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+  input.value = '';
+}
+
+function eliminarHistorial(id, tipo) {
+  const nombre = tipo === 'VACACIONES'
+    ? (solicitudes.find(s => s.id === id) || {}).nombre || ''
+    : (reposos.find(r => r.id === id) || {}).nombre || '';
+  if (!confirm(`¿Está seguro de eliminar este registro de ${tipo} de ${nombre}?\n\nEsta acción no se puede deshacer.`)) return;
+  if (tipo === 'VACACIONES') {
+    solicitudes = solicitudes.filter(s => s.id !== id);
+  } else {
+    reposos = reposos.filter(r => r.id !== id);
+  }
+  saveData();
+  renderHistorial();
+  renderDashboard();
 }
 
 // ══════════════ DASHBOARD ══════════════
