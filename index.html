@@ -385,7 +385,8 @@ body.viewer-mode .admin-only { display: none !important; }
             <th>Días Corresp.</th>
             <th>Base</th>
             <th>Ubicación</th>
-            <th>Estado</th>
+            <th>Nivel</th>
+            <th>Solicitud</th>
             <th style="min-width:160px;">Acción</th>
           </tr>
         </thead>
@@ -1032,6 +1033,65 @@ try {
   nextRepId = reposos.length ? Math.max(...reposos.map(r=>r.id)) + 1 : 1;
 } catch(e) {}
 
+// ══════════════ ESTADO AUTOMÁTICO POR FECHAS ══════════════
+function calcularEstadoAutomatico(desde, hasta) {
+  if (!desde && !hasta) return 'PENDIENTE';
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  if (desde) {
+    const fDesde = parseFechaFlexible(desde);
+    if (fDesde && hoy < fDesde) return 'APROBADA';
+    if (hasta) {
+      const fHasta = parseFechaFlexible(hasta);
+      if (fHasta) {
+        if (hoy >= fDesde && hoy <= fHasta) return 'EN DISFRUTE';
+        if (hoy > fHasta) return 'COMPLETADA';
+      }
+    }
+    // Tiene desde pero no hasta
+    if (fDesde && hoy >= fDesde) return 'EN DISFRUTE';
+  }
+  return 'APROBADA';
+}
+
+// Parsear fecha en formatos dd/mm/yyyy o yyyy-mm-dd
+function parseFechaFlexible(str) {
+  if (!str) return null;
+  str = String(str).trim();
+  let d;
+  if (str.includes('/')) {
+    const p = str.split('/');
+    if (p.length === 3) d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+  } else if (str.includes('-')) {
+    const p = str.split('-');
+    if (p.length === 3) {
+      if (p[0].length === 4) d = new Date(parseInt(p[0]), parseInt(p[1]) - 1, parseInt(p[2]));
+      else d = new Date(parseInt(p[2]), parseInt(p[1]) - 1, parseInt(p[0]));
+    }
+  }
+  if (d && !isNaN(d.getTime())) { d.setHours(0, 0, 0, 0); return d; }
+  return null;
+}
+
+// Actualizar estados automáticamente al cargar el sistema
+function actualizarEstadosAutomaticos() {
+  let changed = false;
+  solicitudes.forEach(sol => {
+    if (sol.estado === 'COMPLETADA') return; // No cambiar las ya completadas manualmente
+    const nuevoEstado = calcularEstadoAutomatico(sol.desde, sol.hasta);
+    if (nuevoEstado !== sol.estado) {
+      sol.estado = nuevoEstado;
+      sincronizarEstadoConVacaciones(sol.id, nuevoEstado);
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveData();
+    renderHistorial();
+    renderDashboard();
+  }
+}
+
 function saveData() {
   // Siempre guardar en localStorage como respaldo
   try {
@@ -1073,23 +1133,22 @@ async function loadFromFirebase() {
       reposos = repSnap.docs.map(d => d.data());
       nextRepId = reposos.length ? Math.max(...reposos.map(r => r.id || 0)) + 1 : 1;
     }
-    // Cargar ediciones de vacaciones
-    const edSnap = await db.collection('config').doc('vacaciones_ediciones').get();
-    if (edSnap.exists) {
-      const ediciones = edSnap.data().data || [];
-      if (ediciones.length === vacacionesData.length) {
-        ediciones.forEach((ed, i) => {
-          if (ed.n) vacacionesData[i].n = ed.n;
-          if (ed.g) vacacionesData[i].g = ed.g;
-          if (ed.i) vacacionesData[i].i = ed.i;
-          if (ed.u) vacacionesData[i].u = ed.u;
-          if (ed.up) vacacionesData[i].up = ed.up;
-          if (ed.pp) vacacionesData[i].pp = ed.pp;
-          if (ed.tv) vacacionesData[i].tv = ed.tv;
-          if (ed.o) vacacionesData[i].o = ed.o;
-        });
-      }
+    // Cargar ediciones de vacaciones (formato v2 por cédula, no por índice)
+    const edSnapV2 = await db.collection('config').doc('vacaciones_ediciones_v2').get();
+    if (edSnapV2.exists && edSnapV2.data().data) {
+      const ediciones = edSnapV2.data().data;
+      Object.keys(ediciones).forEach(key => {
+        const ed = ediciones[key];
+        const reg = vacacionesData.find(r => r.c === ed.c && (r.up || '') === (ed.up || ''));
+        if (reg) {
+          reg.n = ed.n; reg.g = ed.g; reg.i = ed.i; reg.u = ed.u;
+          reg.up = ed.up; reg.pp = ed.pp; reg.tv = ed.tv; reg.o = ed.o;
+          reg._editado = true;
+        }
+      });
     }
+    // Limpiar formato viejo que causaba corrupción
+    db.collection('config').doc('vacaciones_ediciones').delete().catch(() => {});
     // Cargar procesados
     const procSnap = await db.collection('config').doc('procesados').get();
     if (procSnap.exists) {
@@ -1276,36 +1335,46 @@ function loadVacacionesData(data) {
   cargarEdicionesData();
   // Restaurar registros nuevos agregados desde solicitudes
   cargarNuevosRegistros();
+  // Actualizar estados automáticamente según fechas
+  actualizarEstadosAutomaticos();
   renderVacaciones();
   renderDashboard();
 }
 
 function cargarNuevosRegistros() {
+  function mergeNuevos(nuevos) {
+    let changed = false;
+    nuevos.forEach(nr => {
+      // Buscar si ya existe este registro (misma cédula + mismo período)
+      const existeIdx = vacacionesData.findIndex(r => r.c === nr.c && r.up === nr.up);
+      if (existeIdx >= 0) {
+        // Si el existente es original y el nuevo tiene datos de solicitud, actualizar observaciones
+        if (vacacionesData[existeIdx]._original && nr._solId) {
+          vacacionesData[existeIdx].o = nr.o;
+          vacacionesData[existeIdx]._solId = nr._solId;
+          vacacionesData[existeIdx]._estado = nr._estado;
+          changed = true;
+        }
+      } else {
+        nr._nuevo = true;
+        vacacionesData.push(nr);
+        changed = true;
+      }
+    });
+    return changed;
+  }
+
   // Desde localStorage
   try {
     const nuevos = JSON.parse(localStorage.getItem('cvm_vacaciones_nuevos') || '[]');
-    nuevos.forEach(nr => {
-      const existe = vacacionesData.some(r => r.c === nr.c && r.up === nr.up);
-      if (!existe) {
-        nr._nuevo = true;
-        vacacionesData.push(nr);
-      }
-    });
+    mergeNuevos(nuevos);
   } catch(e) {}
-  // Desde Firebase
+
+  // Desde Firebase (asíncrono, actualiza al recibir)
   if (firebaseOK && db) {
     db.collection('config').doc('vacaciones_nuevos').get().then(doc => {
       if (doc.exists && doc.data().data) {
-        let changed = false;
-        doc.data().data.forEach(nr => {
-          const existe = vacacionesData.some(r => r.c === nr.c && r.up === nr.up);
-          if (!existe) {
-            nr._nuevo = true;
-            vacacionesData.push(nr);
-            changed = true;
-          }
-        });
-        if (changed) {
+        if (mergeNuevos(doc.data().data)) {
           renderVacaciones();
           renderDashboard();
         }
@@ -1420,6 +1489,11 @@ function renderVacaciones() {
       <td class="text-center">${baseBadge}</td>
       <td>${ubShort}</td>
       <td>${procesado ? estadoBadge : badge}</td>
+      <td class="text-center">${r._estado === 'COMPLETADA' ? '<span class="badge badge-ok">COMPLETADA</span>'
+        : r._estado === 'APROBADA' ? '<span class="badge badge-info">APROBADA</span>'
+        : r._estado === 'EN DISFRUTE' ? '<span class="badge" style="background:#E8F0FE;color:#1F4E79;border:1px solid #9DC3E6;">EN DISFRUTE</span>'
+        : r._estado === 'PENDIENTE' ? '<span class="badge badge-warn">PENDIENTE</span>'
+        : '<span style="color:#ccc;">—</span>'}</td>
       <td style="white-space:nowrap;">
         ${isAdmin ? `<button class="btn btn-sm" style="background:#E8F0FE;color:#1F4E79;border:1px solid #9DC3E6;margin-right:4px;" onclick="editarTrabajador(${realIdx})" title="Editar datos">✏️</button><button class="btn btn-sm" style="background:#FDE8E8;color:#C00000;border:1px solid #E6A0A0;margin-right:4px;" onclick="eliminarRegistroVacaciones(${realIdx})" title="Eliminar registro">🗑️</button>${procesado ? '<span style="color:#548235;font-weight:bold;">✓</span>' : '<button class="btn btn-primary btn-sm" onclick="crearSolicitudDesdeData(\''+r.c+'\')">Solicitar</button>'}` : ''}
       </td>
@@ -1466,6 +1540,7 @@ function guardarEdicion() {
   r.pp = document.getElementById('edit-pp').value.trim();
   r.tv = document.getElementById('edit-tv').value.trim();
   r.o = document.getElementById('edit-obs').value.trim();
+  r._editado = true; // Marcar como editado para guardar por cédula
   // Guardar ediciones en localStorage
   guardarEdicionesData();
   closeModal('modal-editar');
@@ -1492,39 +1567,74 @@ function eliminarRegistroVacaciones(idx) {
 
 function guardarEdicionesData() {
   try {
-    const ediciones = vacacionesData.map(r => ({
-      c: r.c, n: r.n, g: r.g, i: r.i, u: r.u, up: r.up, pp: r.pp, tv: r.tv, o: r.o
-    }));
-    localStorage.setItem('cvm_vacaciones_ediciones', JSON.stringify(ediciones));
+    // Guardar SOLO los registros que fueron editados manualmente, indexados por cédula+período
+    const ediciones = {};
+    vacacionesData.forEach(r => {
+      if (r._editado) {
+        const key = r.c + '|' + (r.up || '');
+        ediciones[key] = { c: r.c, n: r.n, g: r.g, i: r.i, u: r.u, up: r.up, pp: r.pp, tv: r.tv, o: r.o };
+      }
+    });
+    localStorage.setItem('cvm_vacaciones_ediciones_v2', JSON.stringify(ediciones));
+    // Limpiar formato viejo que causaba corrupción
+    localStorage.removeItem('cvm_vacaciones_ediciones');
     // Sincronizar con Firebase
     if (firebaseOK && db) {
-      // Firestore tiene límite de 1MB por documento, dividir si es necesario
-      const chunkSize = 500;
-      for (let i = 0; i < ediciones.length; i += chunkSize) {
-        const chunk = ediciones.slice(i, i + chunkSize);
-        db.collection('config').doc('vacaciones_ediciones_' + Math.floor(i/chunkSize)).set({ data: chunk }).catch(e => console.warn(e));
-      }
-      db.collection('config').doc('vacaciones_ediciones').set({ data: ediciones.slice(0, 500), totalChunks: Math.ceil(ediciones.length / chunkSize) }).catch(e => console.warn(e));
+      db.collection('config').doc('vacaciones_ediciones_v2').set({ data: ediciones }).catch(e => console.warn(e));
+      // Limpiar documentos viejos
+      db.collection('config').doc('vacaciones_ediciones').delete().catch(() => {});
     }
-  } catch(e) {}
+  } catch(e) { console.warn('Error guardando ediciones:', e); }
 }
 
 function cargarEdicionesData() {
+  // Limpiar formato viejo que causa corrupción de datos (sobreescribia por índice)
+  try { localStorage.removeItem('cvm_vacaciones_ediciones'); } catch(e) {}
+
+  // Cargar formato nuevo v2 (indexado por cédula+período)
   try {
-    const ediciones = JSON.parse(localStorage.getItem('cvm_vacaciones_ediciones') || '[]');
-    if (ediciones.length === vacacionesData.length) {
-      ediciones.forEach((ed, i) => {
-        vacacionesData[i].n = ed.n;
-        vacacionesData[i].g = ed.g;
-        vacacionesData[i].i = ed.i;
-        vacacionesData[i].u = ed.u;
-        vacacionesData[i].up = ed.up;
-        vacacionesData[i].pp = ed.pp;
-        vacacionesData[i].tv = ed.tv;
-        vacacionesData[i].o = ed.o;
+    const ediciones = JSON.parse(localStorage.getItem('cvm_vacaciones_ediciones_v2') || '{}');
+    if (typeof ediciones === 'object' && !Array.isArray(ediciones)) {
+      Object.keys(ediciones).forEach(key => {
+        const ed = ediciones[key];
+        const reg = vacacionesData.find(r => r.c === ed.c && (r.up || '') === (ed.up || ''));
+        if (reg) {
+          reg.n = ed.n;
+          reg.g = ed.g;
+          reg.i = ed.i;
+          reg.u = ed.u;
+          reg.up = ed.up;
+          reg.pp = ed.pp;
+          reg.tv = ed.tv;
+          reg.o = ed.o;
+          reg._editado = true;
+        }
       });
     }
   } catch(e) {}
+
+  // También cargar desde Firebase v2
+  if (firebaseOK && db) {
+    db.collection('config').doc('vacaciones_ediciones_v2').get().then(doc => {
+      if (doc.exists && doc.data().data) {
+        const ediciones = doc.data().data;
+        let changed = false;
+        Object.keys(ediciones).forEach(key => {
+          const ed = ediciones[key];
+          const reg = vacacionesData.find(r => r.c === ed.c && (r.up || '') === (ed.up || ''));
+          if (reg) {
+            reg.n = ed.n; reg.g = ed.g; reg.i = ed.i; reg.u = ed.u;
+            reg.up = ed.up; reg.pp = ed.pp; reg.tv = ed.tv; reg.o = ed.o;
+            reg._editado = true;
+            changed = true;
+          }
+        });
+        if (changed) { renderVacaciones(); renderDashboard(); }
+      }
+    }).catch(e => console.warn(e));
+    // Limpiar documento viejo de Firebase
+    db.collection('config').doc('vacaciones_ediciones').delete().catch(() => {});
+  }
 }
 
 // ══════════════ SOLICITUD ══════════════
@@ -1712,7 +1822,7 @@ function guardarSolicitud() {
     gerenteGH: document.getElementById('sol-gerente-gh').value,
     coordBS: document.getElementById('sol-coord-bs').value,
     comision: document.getElementById('sol-comision').value,
-    estado: 'PENDIENTE'
+    estado: calcularEstadoAutomatico(document.getElementById('sol-desde').value, document.getElementById('sol-hasta').value)
   };
   if (!sol.cedula || !sol.nombre) { alert('Ingrese al menos cédula y nombre.'); return; }
 
@@ -1790,7 +1900,6 @@ function agregarAVacacionesVencidas(sol) {
     const partes = sol.ingreso.split(/[-\/]/);
     let yearIngreso = 0;
     if (partes.length >= 3) {
-      // Detectar formato dd/mm/yyyy o yyyy-mm-dd
       yearIngreso = partes[0].length === 4 ? parseInt(partes[0]) : parseInt(partes[2]);
     }
     const yearActual = new Date().getFullYear();
@@ -1800,17 +1909,21 @@ function agregarAVacacionesVencidas(sol) {
     }
   }
 
-  // Verificar si ya existe un registro con esta cédula y este período
+  // Verificar si ya existe un registro con esta cédula y este período exacto
   const existeIdx = vacacionesData.findIndex(r => {
     if (r.c !== cedula) return false;
-    const upR = parseInt(r.up) || 0;
-    const periodoR = (upR + 1) + '-' + (upR + 2);
-    return periodoR === sol.periodo || r.up === upYear;
+    return r.up === upYear;
   });
 
+  const estadoTxt = sol.estado || 'PENDIENTE';
+  const detalle = (sol.desde ? 'Desde: ' + sol.desde + ' ' : '') + (sol.hasta ? 'Hasta: ' + sol.hasta : '');
+
   if (existeIdx >= 0) {
-    // Ya existe este período para esta cédula, actualizar observación
-    vacacionesData[existeIdx].o = (vacacionesData[existeIdx].o ? vacacionesData[existeIdx].o + ' | ' : '') + 'SOL #' + sol.id + ' - ' + sol.estado;
+    // Ya existe este período para esta cédula — actualizar estado y obs
+    vacacionesData[existeIdx].o = 'SOL #' + sol.id + ' - ' + estadoTxt + (detalle ? ' | ' + detalle : '');
+    vacacionesData[existeIdx]._solId = sol.id;
+    vacacionesData[existeIdx]._estado = estadoTxt;
+    if (!vacacionesData[existeIdx]._original) vacacionesData[existeIdx]._nuevo = true;
   } else {
     // Crear nuevo registro en vacacionesData
     const nuevoRegistro = {
@@ -1822,35 +1935,68 @@ function agregarAVacacionesVencidas(sol) {
       up: upYear,
       tv: anosVenc,
       pp: sol.periodo || '',
-      o: 'SOL #' + sol.id + ' - ' + sol.estado + (sol.desde ? ' | Desde: ' + sol.desde : '') + (sol.hasta ? ' Hasta: ' + sol.hasta : '')
+      o: 'SOL #' + sol.id + ' - ' + estadoTxt + (detalle ? ' | ' + detalle : ''),
+      _nuevo: true,
+      _solId: sol.id,
+      _estado: estadoTxt
     };
     vacacionesData.push(nuevoRegistro);
-
-    // Recalcular tv para todos los registros de esta cédula
-    const regsDelTrabajador = vacacionesData.filter(r => r.c === cedula && !r._procesado);
-    const totalVenc = regsDelTrabajador.length;
-    vacacionesData.forEach(r => {
-      if (r.c === cedula) r.tv = String(totalVenc);
-    });
   }
 
-  // Guardar registros nuevos en Firebase
+  // Recalcular tv (total de períodos vencidos) para esta cédula
+  recalcularTotalVencidos(cedula);
+
+  // Guardar registros nuevos en localStorage y Firebase
   guardarNuevosRegistrosVacaciones();
+  renderVacaciones();
+}
+
+// Recalcular total de períodos vencidos para una cédula
+function recalcularTotalVencidos(cedula) {
+  const regs = vacacionesData.filter(r => r.c === cedula);
+  const total = regs.length;
+  regs.forEach(r => { r.tv = String(total); });
+}
+
+// Sincronizar estado de solicitud con Vacaciones Vencidas
+function sincronizarEstadoConVacaciones(solId, nuevoEstado) {
+  const sol = solicitudes.find(s => s.id === solId);
+  if (!sol) return;
+  const cedula = (sol.cedula || '').replace(/\D/g, '');
+  let upYear = '';
+  if (sol.periodo) {
+    const match = sol.periodo.match(/(\d{4})/);
+    if (match) upYear = match[1];
+  }
+  // Buscar el registro correspondiente en vacacionesData
+  const reg = vacacionesData.find(r => r.c === cedula && (r.up === upYear || r._solId === solId));
+  if (reg) {
+    reg._estado = nuevoEstado;
+    const detalle = (sol.desde ? 'Desde: ' + sol.desde + ' ' : '') + (sol.hasta ? 'Hasta: ' + sol.hasta : '');
+    reg.o = 'SOL #' + solId + ' - ' + nuevoEstado + (detalle ? ' | ' + detalle : '');
+    if (!reg._original) reg._nuevo = true;
+    guardarNuevosRegistrosVacaciones();
+    renderVacaciones();
+  }
 }
 
 function guardarNuevosRegistrosVacaciones() {
-  // Guardar registros agregados manualmente en localStorage
-  const nuevos = vacacionesData.filter(r => r._nuevo).map(r => ({c:r.c, n:r.n, g:r.g, i:r.i, u:r.u, up:r.up, tv:r.tv, pp:r.pp, o:r.o}));
-  // Marcar los nuevos
+  // Marcar todos los no-originales como nuevos
   vacacionesData.forEach(r => {
     if (!r._original) r._nuevo = true;
   });
-  const todosNuevos = vacacionesData.filter(r => r._nuevo).map(r => ({c:r.c, n:r.n, g:r.g, i:r.i, u:r.u, up:r.up, tv:r.tv, pp:r.pp, o:r.o}));
+  // Serializar solo campos de datos (sin flags internos)
+  const todosNuevos = vacacionesData.filter(r => r._nuevo).map(r => ({
+    c: r.c, n: r.n, g: r.g, i: r.i, u: r.u, up: r.up, tv: r.tv, pp: r.pp, o: r.o,
+    _solId: r._solId || 0, _estado: r._estado || ''
+  }));
+  // Guardar en localStorage
   try {
     localStorage.setItem('cvm_vacaciones_nuevos', JSON.stringify(todosNuevos));
-  } catch(e) {}
+  } catch(e) { console.warn('Error guardando en localStorage:', e); }
+  // Guardar en Firebase
   if (firebaseOK && db) {
-    db.collection('config').doc('vacaciones_nuevos').set({ data: todosNuevos }).catch(e => console.warn(e));
+    db.collection('config').doc('vacaciones_nuevos').set({ data: todosNuevos }).catch(e => console.warn('Error guardando nuevos en Firebase:', e));
   }
 }
 
@@ -2410,6 +2556,15 @@ function renderHistorial() {
   const tipo = (document.getElementById('filter-tipo-hist') || {}).value || '';
   const estado = document.getElementById('filter-estado-hist').value;
 
+  // Auto-actualizar estados de solicitudes según fechas
+  solicitudes.forEach(sol => {
+    const autoEstado = calcularEstadoAutomatico(sol.desde, sol.hasta);
+    if (autoEstado !== sol.estado) {
+      sol.estado = autoEstado;
+      sincronizarEstadoConVacaciones(sol.id, autoEstado);
+    }
+  });
+
   let all = [
     ...solicitudes.map(s => ({...s, _tipo: 'VACACIONES'})),
     ...reposos.map(r => ({...r, _tipo: 'REPOSO', periodo: (r.tpr||'E') + ' — ' + (r.diagnostico||'')}))
@@ -2455,7 +2610,10 @@ function cambiarEstado(id, type) {
   const idx = estados.indexOf(item.estado);
   item.estado = estados[(idx + 1) % estados.length];
   saveData();
+  // Sincronizar el nuevo estado con Vacaciones Vencidas
+  sincronizarEstadoConVacaciones(id, item.estado);
   renderHistorial();
+  renderDashboard();
 }
 
 function cambiarEstadoReposo(id) {
@@ -2586,12 +2744,26 @@ function eliminarHistorial(id, tipo) {
     : (reposos.find(r => r.id === id) || {}).nombre || '';
   if (!confirm(`¿Está seguro de eliminar este registro de ${tipo} de ${nombre}?\n\nEsta acción no se puede deshacer.`)) return;
   if (tipo === 'VACACIONES') {
+    // Limpiar referencia en Vacaciones Vencidas
+    const sol = solicitudes.find(s => s.id === id);
+    if (sol) {
+      const cedula = (sol.cedula || '').replace(/\D/g, '');
+      const regVac = vacacionesData.find(r => r._solId === id || (r.c === cedula && r.o && r.o.includes('SOL #' + id)));
+      if (regVac) {
+        regVac._solId = 0;
+        regVac._estado = '';
+        regVac.o = regVac.o.replace(/SOL #\d+ - \w+\s*\|?\s*/g, '').trim();
+        if (regVac.o.startsWith('|')) regVac.o = regVac.o.substring(1).trim();
+        guardarNuevosRegistrosVacaciones();
+      }
+    }
     solicitudes = solicitudes.filter(s => s.id !== id);
   } else {
     reposos = reposos.filter(r => r.id !== id);
   }
   saveData();
   renderHistorial();
+  renderVacaciones();
   renderDashboard();
 }
 
