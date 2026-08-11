@@ -2343,6 +2343,62 @@ function imprimirSolicitud() {
   }, 100);
 }
 
+function reimprimirSolicitud(id) {
+  const sol = solicitudes.find(s => s.id === id);
+  if (!sol) { alert('Solicitud no encontrada.'); return; }
+
+  // Guardar valores actuales del formulario
+  const campos = ['sol-fecha','sol-cedula','sol-nombre','sol-cargo','sol-ingreso','sol-unidad',
+    'sol-unidad-admin','sol-condicion','sol-ubicacion','sol-sueldo','sol-periodo','sol-periodo-pend',
+    'sol-desde','sol-hasta','sol-dias','sol-reintegro','sol-obs','sol-supervisor','sol-gerente',
+    'sol-coord-gh','sol-gerente-gh','sol-coord-bs','sol-comision'];
+  const backup = {};
+  campos.forEach(c => { const el = document.getElementById(c); if (el) { backup[c] = el.value; } });
+
+  // Llenar formulario con datos GUARDADOS (sin recalcular)
+  const setVal = (id, val) => { const el = document.getElementById(id); if (el) el.value = val || ''; };
+  setVal('sol-fecha', sol.fecha);
+  setVal('sol-cedula', sol.cedula);
+  setVal('sol-nombre', sol.nombre);
+  setVal('sol-cargo', sol.cargo);
+  setVal('sol-ingreso', sol.ingreso);
+  setVal('sol-unidad', sol.unidad);
+  setVal('sol-unidad-admin', sol.unidadAdmin);
+  setVal('sol-condicion', sol.condicion);
+  setVal('sol-ubicacion', sol.ubicacion);
+  setVal('sol-sueldo', sol.sueldo);
+  setVal('sol-periodo', sol.periodo);
+  setVal('sol-periodo-pend', sol.periodoPend);
+  setVal('sol-desde', sol.desde);
+  setVal('sol-hasta', sol.hasta);
+  setVal('sol-dias', sol.dias); // Usar los días GUARDADOS, no recalcular
+  setVal('sol-reintegro', sol.reintegro);
+  setVal('sol-obs', sol.obs);
+  setVal('sol-supervisor', sol.supervisor);
+  setVal('sol-gerente', sol.gerente);
+  setVal('sol-coord-gh', sol.coordGH);
+  setVal('sol-gerente-gh', sol.gerenteGH);
+  setVal('sol-coord-bs', sol.coordBS);
+  setVal('sol-comision', sol.comision);
+
+  // Generar preview con datos guardados e imprimir
+  previsualizarSolicitud();
+  // Cerrar modal e imprimir directamente
+  document.getElementById('modal-preview').classList.remove('show');
+  const content = document.getElementById('solicitud-print').innerHTML;
+  const printArea = document.getElementById('print-area');
+  printArea.innerHTML = `<div class="solicitud">${content}</div>`;
+  printArea.style.display = 'block';
+
+  // Restaurar formulario
+  campos.forEach(c => { const el = document.getElementById(c); if (el) el.value = backup[c] || ''; });
+
+  setTimeout(() => {
+    window.print();
+    setTimeout(() => { printArea.style.display = 'none'; }, 500);
+  }, 200);
+}
+
 function closeModal(id) {
   document.getElementById(id).classList.remove('show');
 }
@@ -2623,7 +2679,7 @@ function renderHistorial() {
       <td>${r.dias || ''}</td>
       <td><span class="badge ${estadoBadge}">${r.estado}</span></td>
       <td>
-        ${isAdmin ? (r._tipo === 'VACACIONES'
+        ${r._tipo === 'VACACIONES' ? `<button class="btn btn-sm" style="background:#1F4E79;color:#fff;" onclick="reimprimirSolicitud(${r.id})" title="Imprimir formato de vacaciones">&#128424;</button> ` : ''}${isAdmin ? (r._tipo === 'VACACIONES'
           ? `<button class="btn btn-sm btn-outline" onclick="cambiarEstado(${r.id},'sol')">Estado</button> <button class="btn btn-sm" style="background:#c0392b;color:#fff;" onclick="eliminarHistorial(${r.id},'VACACIONES')">Eliminar</button>`
           : `<button class="btn btn-sm btn-outline" onclick="cambiarEstadoReposo(${r.id})">Estado</button> <button class="btn btn-sm" style="background:#c0392b;color:#fff;" onclick="eliminarHistorial(${r.id},'REPOSO')">Eliminar</button>`
         ) : ''}
