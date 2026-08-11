@@ -1009,6 +1009,7 @@ const firebaseConfig = {
 
 let db = null;
 let firebaseOK = false;
+let _firebaseLoaded = false; // Protección: no guardar en Firebase hasta que la carga inicial termine
 try {
   firebase.initializeApp(firebaseConfig);
   db = firebase.firestore();
@@ -1032,6 +1033,16 @@ try {
   nextSolId = solicitudes.length ? Math.max(...solicitudes.map(s=>s.id)) + 1 : 1;
   nextRepId = reposos.length ? Math.max(...reposos.map(r=>r.id)) + 1 : 1;
 } catch(e) {}
+
+// Cargar vacacionesData desde localStorage (para que sobreviva al F5)
+try {
+  const savedVacData = localStorage.getItem('cvm_vacaciones_data');
+  if (savedVacData) {
+    vacacionesData = JSON.parse(savedVacData);
+    vacacionesData.forEach(r => r._original = true);
+    console.log('vacacionesData restaurada desde localStorage: ' + vacacionesData.length + ' registros.');
+  }
+} catch(e) { console.warn('Error cargando vacacionesData desde localStorage:', e); }
 
 // ══════════════ ESTADO AUTOMÁTICO POR FECHAS ══════════════
 function calcularEstadoAutomatico(desde, hasta) {
@@ -1104,8 +1115,35 @@ function saveData() {
   }
 }
 
+// Guardar vacacionesData para que sobreviva al F5
+function saveVacacionesData() {
+  // Guardar solo campos esenciales (sin flags internos _original, _editado, etc.)
+  const dataLimpia = vacacionesData.map(r => ({
+    c: r.c, n: r.n, g: r.g, i: r.i, u: r.u,
+    up: r.up || '', pp: r.pp || '', tv: r.tv || '', o: r.o || ''
+  }));
+  try {
+    localStorage.setItem('cvm_vacaciones_data', JSON.stringify(dataLimpia));
+  } catch(e) { console.warn('Error guardando vacacionesData en localStorage:', e); }
+  // Guardar en Firebase (solo después de la carga inicial)
+  if (firebaseOK && db && _firebaseLoaded) {
+    // Dividir en chunks de 500 registros (límite Firestore ~1MB por doc)
+    const CHUNK = 500;
+    const totalChunks = Math.ceil(dataLimpia.length / CHUNK) || 1;
+    for (let i = 0; i < totalChunks; i++) {
+      const chunk = dataLimpia.slice(i * CHUNK, (i + 1) * CHUNK);
+      db.collection('config').doc('vacaciones_data_' + i).set({ data: chunk, total: totalChunks })
+        .catch(e => console.warn('Error guardando vacacionesData chunk ' + i + ' en Firebase:', e));
+    }
+    // Limpiar chunks sobrantes de importaciones anteriores más grandes
+    db.collection('config').doc('vacaciones_data_meta').set({ totalChunks, count: dataLimpia.length })
+      .catch(() => {});
+  }
+}
+
 // ══════════════ FIREBASE SYNC ══════════════
 async function saveToFirebase() {
+  if (!_firebaseLoaded) return; // No guardar hasta que la carga inicial termine
   try {
     // Obtener IDs actuales en Firebase para detectar eliminados
     const solSnap = await db.collection('solicitudes').get();
@@ -1157,6 +1195,25 @@ async function loadFromFirebase() {
       reposos = repSnap.docs.map(d => d.data());
       nextRepId = reposos.length ? Math.max(...reposos.map(r => r.id || 0)) + 1 : 1;
     }
+    // Cargar vacacionesData desde Firebase
+    const metaSnap = await db.collection('config').doc('vacaciones_data_meta').get();
+    if (metaSnap.exists) {
+      const totalChunks = metaSnap.data().totalChunks || 1;
+      let allData = [];
+      for (let i = 0; i < totalChunks; i++) {
+        const chunkSnap = await db.collection('config').doc('vacaciones_data_' + i).get();
+        if (chunkSnap.exists && chunkSnap.data().data) {
+          allData = allData.concat(chunkSnap.data().data);
+        }
+      }
+      if (allData.length > 0) {
+        vacacionesData = allData;
+        vacacionesData.forEach(r => r._original = true);
+        // Guardar en localStorage como respaldo
+        try { localStorage.setItem('cvm_vacaciones_data', JSON.stringify(allData)); } catch(e) {}
+        console.log('vacacionesData restaurada desde Firebase: ' + vacacionesData.length + ' registros.');
+      }
+    }
     // Cargar ediciones de vacaciones (formato v2 por cédula, no por índice)
     const edSnapV2 = await db.collection('config').doc('vacaciones_ediciones_v2').get();
     if (edSnapV2.exists && edSnapV2.data().data) {
@@ -1187,12 +1244,22 @@ async function loadFromFirebase() {
       localStorage.setItem('cvm_solicitudes', JSON.stringify(solicitudes));
       localStorage.setItem('cvm_reposos', JSON.stringify(reposos));
     } catch(e) {}
+    // Marcar que la carga inicial terminó — ahora sí se puede guardar en Firebase
+    _firebaseLoaded = true;
+    // Aplicar ediciones y nuevos registros sobre los datos restaurados
+    cargarEdicionesData();
+    cargarNuevosRegistros();
+    actualizarEstadosAutomaticos();
     // Re-renderizar
+    renderVacaciones();
     renderReposos();
     renderHistorial();
     renderDashboard();
     console.log('Datos sincronizados desde Firebase.');
-  } catch(e) { console.warn('Error cargando desde Firebase:', e); }
+  } catch(e) {
+    _firebaseLoaded = true; // Permitir guardar aunque falle la carga
+    console.warn('Error cargando desde Firebase:', e);
+  }
 }
 
 // Escuchar cambios en tiempo real (para que Caracas vea actualizaciones)
@@ -1361,6 +1428,8 @@ function loadVacacionesData(data) {
   cargarNuevosRegistros();
   // Actualizar estados automáticamente según fechas
   actualizarEstadosAutomaticos();
+  // Guardar en localStorage y Firebase para que sobreviva al F5
+  saveVacacionesData();
   renderVacaciones();
   renderDashboard();
 }
@@ -1574,6 +1643,7 @@ function guardarEdicion() {
   r._editado = true; // Marcar como editado para guardar por cédula
   // Guardar ediciones en localStorage
   guardarEdicionesData();
+  saveVacacionesData();
   closeModal('modal-editar');
   renderVacaciones();
   renderDashboard();
@@ -1591,6 +1661,7 @@ function eliminarRegistroVacaciones(idx) {
   if (!confirm(msg)) return;
   vacacionesData.splice(idx, 1);
   guardarEdicionesData();
+  saveVacacionesData();
   renderVacaciones();
   renderDashboard();
   alert('Registro eliminado correctamente.');
@@ -1979,6 +2050,7 @@ function agregarAVacacionesVencidas(sol) {
 
   // Guardar registros nuevos en localStorage y Firebase
   guardarNuevosRegistrosVacaciones();
+  saveVacacionesData();
   renderVacaciones();
 }
 
@@ -2007,6 +2079,7 @@ function sincronizarEstadoConVacaciones(solId, nuevoEstado) {
     reg.o = 'SOL #' + solId + ' - ' + nuevoEstado + (detalle ? ' | ' + detalle : '');
     if (!reg._original) reg._nuevo = true;
     guardarNuevosRegistrosVacaciones();
+    saveVacacionesData();
     renderVacaciones();
   }
 }
@@ -3084,6 +3157,7 @@ function importFile(input) {
       }
       vacacionesData = data;
       vacacionesData.forEach(r => r._original = true);
+      saveVacacionesData();
       renderVacaciones();
       renderDashboard();
       alert(data.length + ' registros importados correctamente.');
@@ -3322,6 +3396,7 @@ if (firebaseOK) {
     console.log('Firebase conectado — datos sincronizados en tiempo real.');
   });
 } else {
+  _firebaseLoaded = true; // Sin Firebase, permitir guardar inmediatamente
   console.log('Firebase no configurado — usando localStorage. Para sincronizar con Caracas, configure firebaseConfig.');
 }
 </script>
