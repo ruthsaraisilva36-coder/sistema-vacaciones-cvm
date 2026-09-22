@@ -367,6 +367,7 @@ body.viewer-mode .admin-only { display: none !important; }
     <div class="panel-header">
       <h3>Registros: <span id="count-vac">0</span></h3>
       <button class="btn btn-primary btn-sm admin-only" onclick="document.getElementById('import-file').click()">Importar Excel</button>
+      <button class="btn btn-warning btn-sm admin-only" onclick="unificarDuplicadosManual()">Unificar duplicados</button>
       <input type="file" id="import-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="importFile(this)">
     </div>
     <div class="table-scroll">
@@ -1985,70 +1986,67 @@ function guardarSolicitud() {
   renderDashboard();
 }
 
+function anioDeIngreso(txt) {
+  if (!txt) return 0;
+  const p = String(txt).split(/[-\/]/);
+  if (p.length < 3) return 0;
+  return p[0].length === 4 ? parseInt(p[0]) : parseInt(p[2]);
+}
+
+// Extrae TODOS los períodos de un texto: "2017-2018/2018-2019" -> ["2017-2018","2018-2019"]
+function extraerPeriodos(txt) {
+  if (!txt) return [];
+  const m = String(txt).match(/\d{4}\s*[-–]\s*\d{4}/g);
+  if (m && m.length) return m.map(x => x.replace(/\s/g, ''));
+  const y = String(txt).match(/\d{4}/g);
+  return y ? y.map(a => a + '-' + (parseInt(a) + 1)) : [];
+}
+
+// Años vencidos = año actual menos el cierre del último período disfrutado
+function calcularAnosVencidos(upYear, ingreso) {
+  const hoy = new Date().getFullYear();
+  const base = parseInt(upYear) || 0;
+  if (base > 0) return String(Math.max(0, hoy - (base + 1)));
+  const yi = anioDeIngreso(ingreso);
+  if (!yi) return '';
+  const ant = hoy - yi;
+  return ant < 1 ? 'NO GENERA' : String(ant);
+}
+
 function agregarAVacacionesVencidas(sol) {
-  const cedula = sol.cedula.replace(/\D/g, '');
+  const cedula = (sol.cedula || '').replace(/\D/g, '');
   if (!cedula) return;
 
-  // Extraer año del período (ej: "2023-2024" → 2023)
-  let upYear = '';
-  if (sol.periodo) {
-    const match = sol.periodo.match(/(\d{4})/);
-    if (match) upYear = match[1];
-  }
-
-  // Calcular años vencidos basado en fecha de ingreso
-  let anosVenc = '1';
-  if (sol.ingreso) {
-    const partes = sol.ingreso.split(/[-\/]/);
-    let yearIngreso = 0;
-    if (partes.length >= 3) {
-      yearIngreso = partes[0].length === 4 ? parseInt(partes[0]) : parseInt(partes[2]);
-    }
-    const yearActual = new Date().getFullYear();
-    if (yearIngreso > 0) {
-      const upNum = parseInt(upYear) || yearActual;
-      anosVenc = String(Math.max(1, yearActual - upNum));
-    }
-  }
-
-  // Verificar si ya existe un registro con esta cédula y este período exacto
-  const existeIdx = vacacionesData.findIndex(r => {
-    if (r.c !== cedula) return false;
-    return r.up === upYear;
-  });
-
+  const periodos = extraerPeriodos(sol.periodo);
+  const upYear = periodos.length ? String(Math.max(...periodos.map(p => parseInt(p.split('-')[0])))) : '';
+  const ppNuevo = upYear ? (parseInt(upYear) + 1) + '-' + (parseInt(upYear) + 2) : (sol.periodoPend || '');
   const estadoTxt = sol.estado || 'PENDIENTE';
   const detalle = (sol.desde ? 'Desde: ' + sol.desde + ' ' : '') + (sol.hasta ? 'Hasta: ' + sol.hasta : '');
+  const obsTxt = 'SOL #' + sol.id + ' - ' + estadoTxt + (detalle ? ' | ' + detalle : '');
 
-  if (existeIdx >= 0) {
-    // Ya existe este período para esta cédula — actualizar estado y obs
-    vacacionesData[existeIdx].o = 'SOL #' + sol.id + ' - ' + estadoTxt + (detalle ? ' | ' + detalle : '');
-    vacacionesData[existeIdx]._solId = sol.id;
-    vacacionesData[existeIdx]._estado = estadoTxt;
-    if (!vacacionesData[existeIdx]._original) vacacionesData[existeIdx]._nuevo = true;
-  } else {
-    // Crear nuevo registro en vacacionesData
-    const nuevoRegistro = {
-      c: cedula,
-      n: sol.nombre || '',
-      g: sol.cargo || '',
-      i: sol.ingreso || '',
-      u: sol.ubicacion || sol.unidad || 'PIM III - Planta Choco',
-      up: upYear,
-      tv: anosVenc,
-      pp: sol.periodo || '',
-      o: 'SOL #' + sol.id + ' - ' + estadoTxt + (detalle ? ' | ' + detalle : ''),
-      _nuevo: true,
-      _solId: sol.id,
-      _estado: estadoTxt
-    };
-    vacacionesData.push(nuevoRegistro);
+  // UNA SOLA FILA POR CÉDULA: buscar por cédula, no por período
+  let reg = vacacionesData.find(r => r.c === cedula);
+
+  if (!reg) {
+    reg = { c: cedula, n: sol.nombre || '', g: sol.cargo || '', i: sol.ingreso || '',
+            u: sol.ubicacion || sol.unidad || 'PIM III - Planta Choco', tp: sol.condicion || '' };
+    vacacionesData.push(reg);
   }
 
-  // Recalcular tv (total de períodos vencidos) para esta cédula
-  recalcularTotalVencidos(cedula);
+  // Acumular los períodos ya otorgados sin repetir
+  const yaOtorgados = extraerPeriodos(reg.po || '');
+  periodos.forEach(p => { if (yaOtorgados.indexOf(p) < 0) yaOtorgados.push(p); });
+  yaOtorgados.sort();
 
-  // Guardar registros nuevos en localStorage y Firebase
+  if (upYear) { reg.up = upYear; reg.pp = ppNuevo; }
+  reg.po = yaOtorgados.join(' / ');
+  reg.dOt = String(parseInt(reg.dOt || 0) + (parseInt(sol.dias) || 0));
+  reg.tv = calcularAnosVencidos(reg.up, reg.i || sol.ingreso);
+  reg.o = obsTxt;
+  reg._solId = sol.id;
+  reg._estado = estadoTxt;
+  reg._nuevo = true;
+
   guardarNuevosRegistrosVacaciones();
   saveVacacionesData();
   renderVacaciones();
@@ -2056,9 +2054,31 @@ function agregarAVacacionesVencidas(sol) {
 
 // Recalcular total de períodos vencidos para una cédula
 function recalcularTotalVencidos(cedula) {
-  const regs = vacacionesData.filter(r => r.c === cedula);
-  const total = regs.length;
-  regs.forEach(r => { r.tv = String(total); });
+  vacacionesData.filter(r => r.c === cedula)
+    .forEach(r => { r.tv = calcularAnosVencidos(r.up, r.i); });
+}
+
+// Deja UNA sola fila por cédula y recalcula los vencidos de todos
+function unificarPorCedula() {
+  const mapa = {};
+  vacacionesData.forEach(r => {
+    const k = r.c;
+    if (!k) return;
+    const prev = mapa[k];
+    if (!prev) { mapa[k] = r; return; }
+    const gana = (parseInt(r.up) || 0) >= (parseInt(prev.up) || 0) ? r : prev;
+    const pierde = gana === r ? prev : r;
+    // conservar lo que traiga la fila descartada
+    ['po','dOt','o','_solId','_estado','i','tp','g','n','u'].forEach(f => {
+      if (!gana[f] && pierde[f]) gana[f] = pierde[f];
+    });
+    const todos = extraerPeriodos(gana.po || '').concat(extraerPeriodos(pierde.po || ''));
+    const unicos = todos.filter((v, idx) => todos.indexOf(v) === idx).sort();
+    if (unicos.length) gana.po = unicos.join(' / ');
+    mapa[k] = gana;
+  });
+  vacacionesData = Object.keys(mapa).map(k => mapa[k]);
+  vacacionesData.forEach(r => { r.tv = calcularAnosVencidos(r.up, r.i); });
 }
 
 // Sincronizar estado de solicitud con Vacaciones Vencidas
@@ -2082,6 +2102,32 @@ function sincronizarEstadoConVacaciones(solId, nuevoEstado) {
     saveVacacionesData();
     renderVacaciones();
   }
+}
+
+// Unificación MANUAL: solo corre cuando el usuario aprieta el botón
+function unificarDuplicadosManual() {
+  const ceds = vacacionesData.map(r => r.c);
+  const dup = ceds.length - new Set(ceds).size;
+  if (dup === 0) { alert('No hay cédulas repetidas. No hay nada que unificar.'); return; }
+
+  const aviso = 'UNIFICAR DUPLICADOS\n\n' +
+    'Registros actuales: ' + vacacionesData.length + '\n' +
+    'Filas con cedula repetida: ' + dup + '\n' +
+    'Quedarian: ' + new Set(ceds).size + ' trabajadores\n\n' +
+    'Esta accion tambien recalcula los anos vencidos de TODOS los registros ' +
+    'y reemplaza cualquier valor corregido a mano.\n\n' +
+    'Descargue el Excel antes de continuar.\n\n' +
+    'Desea continuar?';
+  if (!confirm(aviso)) return;
+  if (!confirm('Confirme una vez mas. Esta accion no se puede deshacer.')) return;
+
+  const antes = vacacionesData.length;
+  unificarPorCedula();
+  saveVacacionesData();
+  renderVacaciones();
+  renderDashboard();
+  alert('Listo.\n\n' + (antes - vacacionesData.length) + ' filas duplicadas unificadas.\n' +
+        vacacionesData.length + ' trabajadores en la data.');
 }
 
 function guardarNuevosRegistrosVacaciones() {
@@ -3051,12 +3097,13 @@ function drawBarChart(canvasId, labels, values, colors) {
 
 // ══════════════ EXPORT ══════════════
 function exportVacaciones() {
-  const headers = ['N°','Cédula','Nombre y Apellido','Tipo Personal','Cargo','Fecha Ingreso','Último Período','Período Pendiente','Total Vencidas','Ubicación','Observación'];
+  const headers = ['N°','Cédula','Nombre y Apellido','Tipo Personal','Cargo','Fecha Ingreso','Último Período','Período Pendiente','Total Vencidas','Períodos Otorgados','Días Otorgados','Estado','Ubicación','Observación'];
   const rows = vacacionesData.map((r, i) => [
-    i+1, r.c, r.n, r.tp || '', r.g, r.i || '', r.up, r.pp || '', r.tv, r.u, r.o || ''
+    i+1, r.c, r.n, r.tp || '', r.g, r.i || '', r.up || '', r.pp || '', r.tv || '',
+    r.po || '', r.dOt || '', r._estado || '', r.u, r.o || ''
   ]);
   downloadExcel([headers, ...rows], 'Vacaciones Vencidas', 'Vacaciones_Vencidas_PIM3.xls',
-    [5, 14, 40, 18, 30, 14, 14, 14, 12, 22, 30]);
+    [5, 14, 40, 18, 30, 14, 14, 14, 12, 34, 12, 14, 22, 34]);
 }
 
 function exportReposos() {
@@ -3129,7 +3176,7 @@ function importFile(input) {
         if (rows.length < 2) { alert('El archivo está vacío o no tiene datos.'); return; }
         // Detectar columnas por encabezado (flexible)
         const hdr = rows[0].map(h => String(h).toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, ''));
-        const colMap = { c: -1, n: -1, g: -1, i: -1, u: -1, up: -1, tv: -1, pp: -1, o: -1 };
+        const colMap = { c: -1, n: -1, g: -1, i: -1, u: -1, up: -1, tv: -1, pp: -1, o: -1, po: -1, dOt: -1, est: -1 };
         hdr.forEach((h, idx) => {
           if (h.includes('cedula') || h === 'c.i.' || h === 'ci') colMap.c = idx;
           else if (h.includes('nombre') || h.includes('apellido')) colMap.n = idx;
@@ -3140,6 +3187,9 @@ function importFile(input) {
           else if (h.includes('total') || h.includes('vencida') || h.includes('años venc') || h === 'tv') colMap.tv = idx;
           else if (h.includes('periodo pendiente') || h === 'pp') colMap.pp = idx;
           else if (h.includes('observ') || h === 'o') colMap.o = idx;
+          else if (h.includes('periodos otorgados')) colMap.po = idx;
+          else if (h.includes('dias otorgados')) colMap.dOt = idx;
+          else if (h === 'estado') colMap.est = idx;
         });
         // Si no detectó cédula, usar posición fija (N°, Cédula, Nombre, Cargo, UP, TV, PP, Ubicación, Obs)
         if (colMap.c < 0) { colMap.c=1; colMap.n=2; colMap.g=3; colMap.i=4; colMap.up=5; colMap.pp=6; colMap.tv=7; colMap.u=8; colMap.o=9; }
@@ -3152,7 +3202,10 @@ function importFile(input) {
           up: String(r[colMap.up >= 0 ? colMap.up : 5] || ''),
           tv: String(r[colMap.tv >= 0 ? colMap.tv : 7] || ''),
           pp: String(r[colMap.pp >= 0 ? colMap.pp : 6] || ''),
-          o: String(r[colMap.o >= 0 ? colMap.o : 9] || '')
+          o: String(r[colMap.o >= 0 ? colMap.o : 9] || ''),
+          po: String(r[colMap.po] || ''),
+          dOt: String(r[colMap.dOt] || ''),
+          _estado: String(r[colMap.est] || '')
         }));
       }
       vacacionesData = data;
@@ -3160,7 +3213,10 @@ function importFile(input) {
       saveVacacionesData();
       renderVacaciones();
       renderDashboard();
-      alert(data.length + ' registros importados correctamente.');
+      const ceds = vacacionesData.map(r => r.c);
+      const dup = ceds.length - new Set(ceds).size;
+      alert(data.length + ' registros importados correctamente.' +
+            (dup > 0 ? '\n\nAviso: hay ' + dup + ' filas con cédula repetida. Puede unificarlas con el botón "Unificar duplicados".' : ''));
     } catch(err) {
       alert('Error al leer el archivo: ' + err.message);
       console.error(err);
