@@ -3097,11 +3097,33 @@ function drawBarChart(canvasId, labels, values, colors) {
 
 // ══════════════ EXPORT ══════════════
 function exportVacaciones() {
+  // Reconstruir los períodos otorgados desde el Historial de solicitudes (solo lectura)
+  const hist = {};
+  solicitudes.forEach(sol => {
+    const ced = (sol.cedula || '').replace(/\D/g, '');
+    if (!ced) return;
+    if (!hist[ced]) hist[ced] = { per: [], dias: 0, est: '' };
+    extraerPeriodos(sol.periodo).forEach(p => {
+      if (hist[ced].per.indexOf(p) < 0) hist[ced].per.push(p);
+    });
+    hist[ced].dias += parseInt(sol.dias) || 0;
+    if (sol.estado) hist[ced].est = sol.estado;
+  });
+
   const headers = ['N°','Cédula','Nombre y Apellido','Tipo Personal','Cargo','Fecha Ingreso','Último Período','Período Pendiente','Total Vencidas','Períodos Otorgados','Días Otorgados','Estado','Ubicación','Observación'];
-  const rows = vacacionesData.map((r, i) => [
-    i+1, r.c, r.n, r.tp || '', r.g, r.i || '', r.up || '', r.pp || '', r.tv || '',
-    r.po || '', r.dOt || '', r._estado || '', r.u, r.o || ''
-  ]);
+  const rows = vacacionesData.map((r, i) => {
+    const h = hist[r.c];
+    // Unir lo guardado en la ficha con lo que aparece en el Historial
+    const todos = extraerPeriodos(r.po || '').concat(h ? h.per : []);
+    const unicos = todos.filter((v, k) => todos.indexOf(v) === k).sort();
+    const periodosTxt = unicos.join(' / ');
+    const diasTxt = r.dOt || (h && h.dias ? String(h.dias) : '');
+    const estadoTxt = r._estado || (h ? h.est : '') || '';
+    return [
+      i+1, r.c, r.n, r.tp || '', r.g, r.i || '', r.up || '', r.pp || '', r.tv || '',
+      periodosTxt, diasTxt, estadoTxt, r.u, r.o || ''
+    ];
+  });
   downloadExcel([headers, ...rows], 'Vacaciones Vencidas', 'Vacaciones_Vencidas_PIM3.xls',
     [5, 14, 40, 18, 30, 14, 14, 14, 12, 34, 12, 14, 22, 34]);
 }
