@@ -1380,7 +1380,8 @@ function calcularDiasVacaciones(record) {
     let anosServicio = anioIngreso > 0 ? (ultimoPeriodo + 1 - anioIngreso) : 1;
     if (anosServicio < 1) anosServicio = 1;
     const diasBase = 15;
-    const diasAdicionales = Math.min(anosServicio, 15); // Tope LOTTT: máx. 15 adicionales
+    // LOTTT Art. 190: 15 días el 1er año; desde el 2do año se suma 1 día adicional por cada año (N-1)
+    const diasAdicionales = Math.min(Math.max(anosServicio - 1, 0), 15); // Tope LOTTT: máx. 15 adicionales
     const totalDias = diasBase + diasAdicionales;
     return {
       dias: totalDias,
